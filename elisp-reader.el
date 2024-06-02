@@ -1,5 +1,4 @@
-;;; -*- lexical-binding: t -*-
-;;; elisp-reader.el --- A customizable Lisp reader for Emacs
+;;; elisp-reader.el --- A customizable Lisp reader for Emacs -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2016 Mihai Bazon
 
@@ -640,11 +639,53 @@ during byte compilation."
     ,@(mapcar (lambda (name)
                 `(er-make-prefixed ,name ,prefix)) names)))
 
-;; install in a prog, so they're read all at once with the original
-;; reader
-(progn
+;; ;; install in a prog, so they're read all at once with the original
+;; ;; reader
+;; (progn
+;;   (fset 'read (symbol-function 'er-read))
+;;   (fset 'read-from-string (symbol-function 'er-read-from-string))
+;;   (setq load-read-function (symbol-function 'er-read)))
+
+(defvar er--original-read (symbol-function 'read))
+(defvar er--original-read-from-string (symbol-function 'read-from-string))
+(defvar er--original-load-read-function load-read-function)
+
+(defun er-enable ()
+  (interactive)
+  (setq er--original-read (symbol-function 'read)
+        er--original-read-from-string (symbol-function 'read-from-string)
+        er--original-load-read-function load-read-function)
   (fset 'read (symbol-function 'er-read))
   (fset 'read-from-string (symbol-function 'er-read-from-string))
   (setq load-read-function (symbol-function 'er-read)))
+
+(defun er-disable ()
+  (interactive)
+  (fset 'read er--original-read)
+  (fset 'read-from-string er--original-read-from-string)
+  (setq load-read-function er--original-load-read-function))
+
+(defcustom er-enabled nil
+  "Whether to use the extensible elisp-reader when reading elisp."
+  :set
+  (lambda (option new-value)
+    (if new-value (er-enable) (er-disable))))
+
+(defun er-enabled-p ()
+  (eq (symbol-function 'read) (symbol-function 'er-read)))
+
+(defun without-er-reader-a (orig-fn &rest args)
+  "An advice to disable elisp-reader for this function only.
+
+To be used with `advice-add' and `:around'."
+  (let ((was-enabled (er-enabled-p)))
+    (unwind-protect
+        (progn
+          (when was-enabled (er-disable))
+          (apply orig-fn args))
+      (when was-enabled (er-enable)))))
+
+;; `helpful-update' has some problems with the new elisp reader.
+;; (advice-add 'helpful-update :around #'without-er-reader-a)
 
 (provide 'elisp-reader)
